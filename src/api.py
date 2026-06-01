@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 import chromadb
@@ -28,6 +29,19 @@ count = collection.count()
 print(f"Collection ready: {count} vectors")
 
 app = FastAPI(title="JW Study", version="1.0.0")
+
+# Allow cross-origin requests from GH Pages and local dev
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://camster91.github.io",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/api/search")
