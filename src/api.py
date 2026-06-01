@@ -331,6 +331,41 @@ def get_scriptures(text: str = Query(..., min_length=1)):
     return {"count": len(refs), "scriptures": refs}
 
 
+# ── Build scripture → chunk reverse index (at module load) ──
+print("Building scripture cross-reference index...")
+SCRIPTURE_INDEX: dict[str, list[dict]] = {}  # "Book Ch:V" → [{id, text, publication}]
+
+def build_scripture_index(batch_size: int = 5000):
+    """Walk all chunks, extract scripture refs, build reverse lookup."""
+    global SCRIPTURE_INDEX
+    SCRIPTURE_INDEX = {}
+    offset = 0
+    total = collection.count()
+    while offset < total:
+        batch = collection.get(limit=batch_size, offset=offset, include=["documents", "metadatas"])
+        if not batch.get("ids"):
+            break
+        for i, chunk_id in enumerate(batch["ids"]):
+            text = batch["documents"][i] if batch.get("documents") else ""
+            meta = batch["metadatas"][i] if batch.get("metadatas") else {}
+            refs = extract_scriptures(text)
+            for ref in refs:
+                key = f"{ref['book']} {ref['chapter']}:{ref.get('verseStart', '')}"
+                if key not in SCRIPTURE_INDEX:
+                    SCRIPTURE_INDEX[key] = []
+                if len(SCRIPTURE_INDEX[key]) < 50:
+                    SCRIPTURE_INDEX[key].append({
+                        "id": chunk_id,
+                        "text": text[:300],
+                        "publication": meta.get("publication", "Unknown"),
+                        "chunk": meta.get("chunk_index", 0),
+                    })
+        offset += len(batch["ids"])
+    print(f"Scripture index: {len(SCRIPTURE_INDEX)} unique verse references mapped")
+
+build_scripture_index()
+
+
 @app.get("/api/search")
 def search(q: str = Query(..., min_length=1), k: int = Query(default=DEFAULT_K, ge=1, le=50)):
     """Semantic search across JW publications."""
@@ -417,6 +452,131 @@ def get_passage(chunk_id: str):
         "chunk": meta.get("chunk_index", 0),
         "text": text,
         "scriptures": extract_scriptures(text),
+    }
+
+
+@app.get("/api/xref")
+def crossref(q: str = Query(..., min_length=3, description="Scripture reference, e.g. 'James 2:17' or 'John 3:16'")):
+    """Find all passages that reference a given scripture.
+
+    Uses the in-memory reverse index built at startup.
+    Returns matching chunks with their source publication and text snippet.
+    """
+    refs = extract_scriptures(q)
+    if not refs:
+        return {"query": q, "count": 0, "results": [], "hint": "Could not parse scripture reference. Try 'John 3:16' or 'James 2:17'."}
+
+    all_results = []
+    seen_ids = set()
+    for ref in refs:
+        key = f"{ref['book']} {ref['chapter']}:{ref.get('verseStart', '')}"
+        # Also try partial key (without verse)
+        partial_key = f"{ref['book']} {ref['chapter']}:"
+        # Try exact match first
+        matches = SCRIPTURE_INDEX.get(key, [])
+        # Also try partial matches (same chapter, any verse)
+        if not matches:
+            for k, v in SCRIPTURE_INDEX.items():
+                if k.startswith(partial_key) and len(matches) < 20:
+                    for item in v:
+                        if item["id"] not in seen_ids:
+                            matches.append(item)
+                            seen_ids.add(item["id"])
+        for item in matches:
+            if item["id"] not in seen_ids:
+                seen_ids.add(item["id"])
+                all_results.append(item)
+        if len(all_results) >= 30:
+            break
+
+    return {
+        "query": q,
+        "parsedRefs": refs,
+        "count": len(all_results),
+        "results": all_results[:30],
+    }
+
+
+@app.get("/api/xref/graph")
+def xref_graph(q: str = Query(..., min_length=3, description="Scripture reference, e.g. 'James 2:17'")):
+    """Return a scripture graph: the verse + what it cites + what cites it.
+
+    Returns nodes (verses/passages) and edges (citation relationships)
+    suitable for a force-directed graph visualization.
+    """
+    refs = extract_scriptures(q)
+    if not refs:
+        return {"error": "Could not parse scripture reference"}
+
+    # Get the source verse info
+    source_ref = refs[0]
+    source_id = f"{source_ref['book']} {source_ref['chapter']}:{source_ref.get('verseStart', '')}"
+
+    # Get passages that cite this verse
+    citing = SCRIPTURE_INDEX.get(source_id, [])[:15]
+
+    # Get the passages themselves
+    nodes = []
+    edges = []
+    node_ids = set()
+
+    # Add source node
+    nodes.append({
+        "id": source_id,
+        "label": source_ref["raw"],
+        "type": "source",
+        "group": 0,
+    })
+    node_ids.add(source_id)
+
+    # For each citing passage, extract what other verses it cites
+    for item in citing[:10]:
+        text = item.get("text", "")
+        cited_in_passage = extract_scriptures(text)
+
+        # Add passage node
+        passage_id = item["id"]
+        if passage_id not in node_ids:
+            nodes.append({
+                "id": passage_id,
+                "label": item.get("publication", "Pub"),
+                "type": "passage",
+                "group": 1,
+                "text": text[:100],
+            })
+            node_ids.add(passage_id)
+
+        # Edge: passage → source (the passage cites the source verse)
+        edges.append({
+            "source": passage_id,
+            "target": source_id,
+            "label": "cites",
+        })
+
+        # Add verse nodes + edges for other verses in the passage
+        for ref in cited_in_passage[:5]:
+            ref_id = f"{ref['book']} {ref['chapter']}:{ref.get('verseStart', '')}"
+            if ref_id == source_id:
+                continue
+            if ref_id not in node_ids:
+                nodes.append({
+                    "id": ref_id,
+                    "label": ref.get("raw", ref_id),
+                    "type": "verse",
+                    "group": 2,
+                })
+                node_ids.add(ref_id)
+            edges.append({
+                "source": passage_id,
+                "target": ref_id,
+                "label": "also cites",
+            })
+
+    return {
+        "query": q,
+        "sourceId": source_id,
+        "nodes": nodes,
+        "edges": edges,
     }
 
 
