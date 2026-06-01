@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JW Study — Scripture Search</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: #0f1117; color: #e4e5e7; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .container { width: 100%; max-width: 720px; padding: 32px 16px; }
+  h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: #8b8d97; font-size: 0.875rem; margin-bottom: 24px; }
+  .search-box {
+    position: relative; margin-bottom: 24px;
+  }
+  .search-box input {
+    width: 100%; padding: 14px 48px 14px 20px;
+    background: #1a1d27; border: 2px solid #2a2d3a;
+    border-radius: 12px; color: #e4e5e7; font-size: 1rem;
+    outline: none; transition: border-color 0.2s;
+  }
+  .search-box input:focus { border-color: #6c8cbf; }
+  .search-box button {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    background: #6c8cbf; border: none; color: white; width: 36px; height: 36px;
+    border-radius: 8px; cursor: pointer; font-size: 1.1rem;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .search-box button:hover { background: #7d9dd0; }
+  .search-box button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .stats { color: #6b6d78; font-size: 0.75rem; margin-bottom: 16px; }
+  .result {
+    background: #1a1d27; border-radius: 10px; padding: 16px;
+    margin-bottom: 10px; transition: background 0.15s;
+  }
+  .result:hover { background: #21252f; }
+  .result-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+  }
+  .pub-badge {
+    background: #2a3050; color: #8fabdb; font-size: 0.65rem;
+    font-weight: 600; padding: 2px 8px; border-radius: 4px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .score { color: #6b8d6b; font-size: 0.7rem; }
+  .result-text {
+    font-size: 0.875rem; line-height: 1.5; color: #b8bac5;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .empty { text-align: center; color: #6b6d78; padding: 48px 0; }
+  .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+  .loading { text-align: center; padding: 24px; color: #6b6d78; }
+  .spinner {
+    width: 28px; height: 28px; border: 3px solid #2a2d3a;
+    border-top-color: #6c8cbf; border-radius: 50%;
+    animation: spin 0.7s linear infinite; margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error { color: #d47a7a; text-align: center; padding: 16px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📖 JW Study</h1>
+  <p class="subtitle">Semantic scripture search — ask questions or search keywords</p>
+
+  <div class="search-box">
+    <input id="searchInput" type="text" placeholder="e.g. faith without works, God's name, resurrection hope..."
+      autofocus autocomplete="off">
+    <button id="searchBtn" onclick="search()">🔍</button>
+  </div>
+
+  <div class="stats" id="stats">Loading...</div>
+  <div id="results"></div>
+</div>
+
+<script>
+const API = 'https://study.ashbi.ca';
+
+async function init() {
+  try {
+    const r = await fetch(API + '/api/stats');
+    const d = await r.json();
+    document.getElementById('stats').textContent =
+      `${d.vectors.toLocaleString()} vectors · ${d.publications || 7} publications · ${d.model}`;
+  } catch { document.getElementById('stats').textContent = ''; }
+}
+
+async function search() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) return;
+
+  const btn = document.getElementById('searchBtn');
+  const results = document.getElementById('results');
+  btn.disabled = true;
+  results.innerHTML = '<div class="loading"><div class="spinner"></div>Searching...</div>';
+
+  try {
+    const r = await fetch(API + '/api/search?q=' + encodeURIComponent(q) + '&k=12');
+    const data = await r.json();
+    if (!data.results || !data.results.length) {
+      results.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div>No results found</div>';
+      return;
+    }
+    results.innerHTML = data.results.map(r => `
+      <div class="result">
+        <div class="result-header">
+          <span class="pub-badge">${r.publication || ''}</span>
+          <span class="score">${Math.round(r.score * 100)}% match</span>
+        </div>
+        <div class="result-text">${r.text || r.content || ''}</div>
+      </div>
+    `).join('');
+  } catch (e) {
+    results.innerHTML = '<div class="error">Search failed. Please try again.</div>';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('searchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') search();
+});
+
+init();
+</script>
+</body>
+</html>
