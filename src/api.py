@@ -639,7 +639,7 @@ FRONTEND_HTML = """<!DOCTYPE html>
 <div class="container">
   <header>
     <h1>📖 JW Study</h1>
-    <p>Search 62,000+ passages across 7 JW publications</p>
+    <p>Search <span id="vectorCount">62,000+</span> passages across <span id="pubCount">multiple</span> JW publications</p>
   </header>
 
   <div class="search-box">
@@ -664,9 +664,12 @@ let debounceTimer;
 
 // Load stats on page load
 fetch('/api/stats').then(r => r.json()).then(s => {
+  document.getElementById('vectorCount').textContent = s.vectors.toLocaleString();
+  document.getElementById('pubCount').textContent =
+    (s.publications || []).length || 'multiple';
   statsBar.innerHTML = `
     <div class="stat"><div class="num">${s.vectors.toLocaleString()}</div><div class="lbl">Vectors</div></div>
-    <div class="stat"><div class="num">7</div><div class="lbl">Publications</div></div>
+    <div class="stat"><div class="num">${(s.publications || []).length}</div><div class="lbl">Publications</div></div>
     <div class="stat"><div class="num">${s.model.split('-').slice(0,2).join('-')}</div><div class="lbl">Model</div></div>
   `;
 });
