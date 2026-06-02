@@ -87,9 +87,10 @@ async function init() {
   try {
     const r = await fetch(API + '/api/stats');
     const d = await r.json();
+    const pubCount = Array.isArray(d.publications) ? d.publications.length : (d.publications || 7);
     document.getElementById('stats').textContent =
-      `${d.vectors.toLocaleString()} vectors · ${d.publications || 7} publications · ${d.model}`;
-  } catch { document.getElementById('stats').textContent = ''; }
+      `${d.vectors.toLocaleString()} vectors · ${pubCount} publications · ${d.model}`;
+  } catch { document.getElementById('stats').textContent = 'Stats unavailable'; }
 }
 
 async function search() {
@@ -118,6 +119,7 @@ async function search() {
       </div>
     `).join('');
   } catch (e) {
+    console.error('Search failed:', e);
     results.innerHTML = '<div class="error">Search failed. Please try again.</div>';
   } finally {
     btn.disabled = false;
