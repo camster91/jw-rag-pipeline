@@ -1,0 +1,19 @@
+name: Deploy to Coolify
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Coolify Deploy
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: Bearer *** \
+            -H "Content-Type: application/json" \
+            http://187.77.26.99:8000/api/v1/applications/i98wck4vah9925v9mrky56v3/start
