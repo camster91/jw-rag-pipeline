@@ -55,3 +55,30 @@ Search results
 - First run downloads the embedding model (~90MB) and caches it locally
 - ChromaDB persists to disk — re-indexing is only needed when EPUBs change
 - Designed for local use only — no network calls after model download
+
+## API Server
+
+`src/api.py` serves the vector database via FastAPI. Deployed to Coolify at [study.ashbi.ca](https://study.ashbi.ca).
+
+**Endpoints:**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/search?q=...&k=10` | GET | Semantic search across publications |
+| `/api/stats` | GET | Collection stats (vectors, publications) |
+| `/api/scriptures?text=...` | GET | Extract scripture references from text |
+| `/api/xref?q=John+3:16` | GET | Find passages citing a scripture |
+| `/api/xref/graph?q=John+3:16` | GET | Scripture citation graph (nodes + edges) |
+| `/api/passage/{id}` | GET | Get a specific passage by chunk ID |
+| `/api/related?id=...` | GET | Find semantically related passages |
+| `/` | GET | Embedded SPA search UI |
+
+**Frontend:** Static SPA deployed via GitHub Pages at [camster91.github.io/jw-rag-pipeline](https://camster91.github.io/jw-rag-pipeline/).
+
+## Docker
+
+```bash
+docker build -t jw-rag-pipeline .
+docker run -p 8000:8000 jw-rag-pipeline
+```
+
+The Docker image bundles the vector database — rebuild when EPUBs change.
