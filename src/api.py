@@ -389,15 +389,18 @@ def search(q: str = Query(..., min_length=1), k: int = Query(default=DEFAULT_K, 
 @app.get("/api/stats")
 def stats():
     """Collection statistics + per-publication breakdown."""
-    # Per-pub counts — sample enough to get a representative mix
-    sample = collection.get(limit=10000, include=["metadatas"])
-    pub_counts: Counter = Counter(m.get("publication", "Unknown") for m in sample.get("metadatas") or [])
+    # Per-pub counts — sample from multiple offsets for representative mix
     total = collection.count()
-    # Estimate full counts by extrapolation
-    sample_size = len(sample.get("metadatas") or [])
-    if 0 < sample_size < total:
-        ratio = total / sample_size
-        pub_counts = Counter({p: int(c * ratio) for p, c in pub_counts.items()})
+    sample_size = min(50000, total)
+    offsets = [0, total // 3, 2 * total // 3] if total > sample_size else [0]
+    pub_counts: Counter = Counter()
+    for offset in offsets:
+        batch_size = min(sample_size // len(offsets), total - offset)
+        if batch_size <= 0:
+            continue
+        sample = collection.get(limit=batch_size, offset=offset, include=["metadatas"])
+        for m in sample.get("metadatas") or []:
+            pub_counts[m.get("publication", "Unknown")] += 1
     return {
         "name": collection.name,
         "vectors": total,
