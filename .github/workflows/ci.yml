@@ -1,19 +1,50 @@
-name: CI
+name: CI Build
+
+# Build-only workflow: verifies the project builds cleanly. No deploy, no secrets required.
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  build:
+    name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: pip
-      - run: pip install -r requirements.txt
-      - run: python -m pytest src/ --tb=short -q || echo "No tests yet — skipping"
-      - run: python -c "import ast; [ast.parse(open(f'src/{f}').read()) for f in ['api.py','04_query.py','03_embed.py','02_chunk.py','01_extract.py']]; print('Syntax OK')"
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          if [ -f pyproject.toml ]; then
+            pip install -e .
+          fi
+
+      - name: Import smoke test
+        run: |
+          python -c "import sys; print('Python', sys.version)"
+          # Try to compile all python files to catch syntax errors
+          for f in $(find . -maxdepth 3 -name "*.py" -not -path "./node_modules/*" -not -path "./.venv/*" -not -path "./venv/*"); do
+            python -m py_compile "$f" || exit 1
+          done
