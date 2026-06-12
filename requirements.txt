@@ -16,7 +16,7 @@ sentence-transformers>=3.0
 
 # Environment & utilities
 python-dotenv>=1.0
-tqdm>=4.66
+tqdm>=4.68.2
 rich>=13.0
 
 # API server
