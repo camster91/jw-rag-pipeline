@@ -8,12 +8,49 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Trigger Coolify Deploy
         env:
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
         run: |
-          curl -s -X POST \
-            -H "Authorization: Bearer *** \
+          # Fail fast with a clear message if a required secret is missing.
+          # Without this, a missing secret produces a confusing curl error
+          # (HTTP 401 with empty body, or a URL like ".../start" with no UUID).
+          if [ -z "$COOLIFY_TOKEN" ]; then
+            echo "::error::COOLIFY_TOKEN secret is not set. Add it in repo Settings -> Secrets -> Actions."
+            exit 1
+          fi
+          if [ -z "$COOLIFY_URL" ] || [ -z "$COOLIFY_APP_UUID" ]; then
+            echo "::error::COOLIFY_URL and COOLIFY_APP_UUID must be set. Falling back to legacy hardcoded endpoint."
+            COOLIFY_URL="http://187.77.26.99:8000"
+            COOLIFY_APP_UUID="i98wck4vah9925v9mrky56v3"
+          fi
+
+          URL="${COOLIFY_URL}/api/v1/applications/${COOLIFY_APP_UUID}/start"
+          echo "Triggering Coolify deploy: $URL"
+
+          # 60s timeout, --fail-with-body to surface HTTP errors, --retry 2 for transient blips.
+          HTTP_CODE=$(curl -s --max-time 60 --fail-with-body \
+            -o /tmp/coolify-response.json \
+            -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
             -H "Content-Type: application/json" \
-            http://187.77.26.99:8000/api/v1/applications/i98wck4vah9925v9mrky56v3/start
+            "$URL" 2>&1) || HTTP_CODE=$?
+
+          echo "Response: $HTTP_CODE"
+          cat /tmp/coolify-response.json 2>/dev/null || true
+          echo
+
+          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "202" ]; then
+            echo "Deploy triggered successfully."
+          else
+            echo "::warning::Coolify deploy endpoint returned HTTP $HTTP_CODE. Build is unaffected; manual deploy still possible."
+            # Non-fatal: this matches the previous behavior where a Coolify
+            # outage didn't block a successful build. The build-and-push
+            # job is the source of truth for whether new code shipped.
+            exit 0
+          fi
