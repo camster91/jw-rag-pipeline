@@ -2,7 +2,7 @@
 # Python 3.9+ required
 
 # EPUB parsing
-ebooklib>=0.18
+ebooklib>=0.20
 beautifulsoup4>=4.15.0
 lxml>=5.0
 
