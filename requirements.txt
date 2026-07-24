@@ -15,7 +15,7 @@ chromadb>=0.5
 sentence-transformers>=3.0
 
 # Environment & utilities
-python-dotenv>=1.0
+python-dotenv>=1.2.2
 tqdm>=4.68.3
 rich>=13.0
 
